@@ -1,32 +1,111 @@
-s3://aws-logs-824964388458-ap-south-1/elasticmapreduce/
+Airline on time data performanc
+—----------------------------------------
 
-** Codes **
+AMAZON S3    →    Spark Cluster(Amazon EMR)    → mysql RDBMS (AMAZON RDS)
+
+Problem Scenario
+
+1. Find out the month wise total distance travelled by each flight number ..?
+2. Find out month wise how many get diverted (origin to destination).?
+
+
+#Creatation of S3
+      Simple service storage
+ Its like a common directory
+Create bucket → udayairline,  ep-south(mumbai), untick block all access
+Create a folder test
+Upload a file form local file system
+All the permission  → read, read write 
+standard  storage type
+Data file format vs orc
+
+
+#Creatation of EMR
+Amazon Elastic MapReduce) is a managed cluster platform 
+ Hadoop 2.10.1  Ganglia 3.7.2   Spark 2.4.8  Zeppelin 0.10.0
+Master 8 core  32 gb ram m5.2xlarge
+slave(3)  8 core 32 gb ram 
+Putty gen will generate   → .ppk
+click on ssh and copy host name 
+Go to ssh → auth and upload ppk file in putty 
+
+#Creatation of RDS
+Click on rds
+Select database → create database
+Engine  → Mysql 5.5.61
+Create username and password
+Public accessble → yes
+Create database
+
+#run 
+export PYSPARK_PYTHON = python3
+Pyspark –packages mysql:mysql-connector-java:5.1.47
+
+Analysis
+—-----------
+## Creating Dataframe
+df = spark.read.orc("s3://udayairlines/input/part-r-00001.orc")
+df.printSchema()
+df.count()
+
+
+## analyse 01 → Find out the month wise total distance travelled by each flight number ..?
+df1 = df.select("month","flightnum","distance")
+df2 = df1.na.drop()
+df2.createTempView(“mytd”)
+df3 = ss.sql(“select month, flightnum, sum(distance) as total_distance from mytd group by month, flightnum order by month, flightnum ”)
+df3.printSchema()
+
+# saving the result to amazon rds 
+sqlproperties = {"user":"root", "password":"udayp111", "driver":"com.mysql.jdbc.Driver"}
+df3.write.jdbc(url="jdbc:mysql//database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="pro1",properties=sqlproperties)
+
+
+## analyse 02 → Find out month wise how many get diverted (origin to destination).?
+df4 = df.select("month","flightnum","diverted")
+df5 = df4.na.drop()
+df5.createTempView(“mytd1”)
+
+df6 = ss.sql(“select month, flightnum, sum(diverted) as total_diverted from mytd1 group by month, flightnum order by month, flightnum ”)
+df6.printSchema()
+
+# saving the result to amazon rds df6.write.jdbc(url="jdbc:mysql//database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="pro2",properties=sqlproperties)
+
+
+
+—--------------------------------------------------------------------------------------------------
+sparkcode1.py →
+ 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 
 spark = SparkSession.builder.appName("AirlinesDataset").getOrCreate()
-df = spark.read.orc("s3://awsairlines2019/input/part-r-00000-7b23c7eb-1460-412a-b712-4574f4662771.orc")
-
+ss  = spark
+df = spark.read.orc("s3://udayairlines/input/part-r-00001.orc")
 df.printSchema()
 
-#df.count()
-
-print("\n Total Columns " len(df.columns))
-
+## analyse 01 → Find out the month wise total distance travelled by each flight number ..?
 df1 = df.select("month","flightnum","distance")
+df2 = df1.na.drop()
+df2.createTempView(“mytd”)
+df3 = ss.sql(“select month, flightnum, sum(distance) as total_distance from mytd group by month, flightnum order by month, flightnum ”)
+df3.printSchema()
 
-df2 = df1.filter(df1.month.isNotNull()).groupby("month","flightnum").agg({"distance":"sum"}).orderBy("month","flightnum").withColumnRenamed("sum(distance)","Total_Distance")
+# saving the result to amazon rds 
+sqlproperties = {"user":"root", "password":"udayp111", "driver":"com.mysql.jdbc.Driver"}
+df3.write.jdbc(url="jdbc:mysql://database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="pro1",properties=sqlproperties)
 
-df2.printSchema()
 
-print("\n Writing JDBC scenario_1 " )
-sqlproperties = {"user":"admin", "password":"mysqladmin", "driver":"com.mysql.jdbc.Driver"}
-df2.write.jdbc(url="jdbc:mysql//database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="scenario_1",properties=sqlproperties)
+## analyse 02 → Find out month wise how many get diverted (origin to destination).?
+df4 = df.select("month","flightnum","diverted")
+df5 = df4.na.drop()
+df5.createTempView(“mytd1”)
 
-# Scenario_2
-df3 = df.select("month","flightnum","diverted")
-df4 = df3.filter((df3.month.isNotNull()) & (df3.diverted=='1')).groupby("month","flightnum").agg({"diverted":"sum"}).orderBy("month","flightnum").withColumnRenamed("sum(diverted)","Total_diverted")
+df6 = ss.sql(“select month, flightnum, sum(diverted) as total_diverted from mytd1 group by month, flightnum order by month, flightnum ”)
+df6.printSchema()
 
-print("\n Writing JDBC scenario_2 " )
-df4.write.jdbc(url="jdbc:mysql//database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="scenario_2",properties=sqlproperties)
+# saving the result to amazon rds df6.write.jdbc(url="jdbc:mysql://database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="pro2",properties=sqlproperties)
+—--------------------------------------------------------------------------------------------------
+
+spark-submit –master-yarn –deploy-mode client  –packages mysql:mysql-connector-java:5.1.47
 
