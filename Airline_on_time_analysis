@@ -1,0 +1,32 @@
+s3://aws-logs-824964388458-ap-south-1/elasticmapreduce/
+
+** Codes **
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+spark = SparkSession.builder.appName("AirlinesDataset").getOrCreate()
+df = spark.read.orc("s3://awsairlines2019/input/part-r-00000-7b23c7eb-1460-412a-b712-4574f4662771.orc")
+
+df.printSchema()
+
+#df.count()
+
+print("\n Total Columns " len(df.columns))
+
+df1 = df.select("month","flightnum","distance")
+
+df2 = df1.filter(df1.month.isNotNull()).groupby("month","flightnum").agg({"distance":"sum"}).orderBy("month","flightnum").withColumnRenamed("sum(distance)","Total_Distance")
+
+df2.printSchema()
+
+print("\n Writing JDBC scenario_1 " )
+sqlproperties = {"user":"admin", "password":"mysqladmin", "driver":"com.mysql.jdbc.Driver"}
+df2.write.jdbc(url="jdbc:mysql//database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="scenario_1",properties=sqlproperties)
+
+# Scenario_2
+df3 = df.select("month","flightnum","diverted")
+df4 = df3.filter((df3.month.isNotNull()) & (df3.diverted=='1')).groupby("month","flightnum").agg({"diverted":"sum"}).orderBy("month","flightnum").withColumnRenamed("sum(diverted)","Total_diverted")
+
+print("\n Writing JDBC scenario_2 " )
+df4.write.jdbc(url="jdbc:mysql//database-1.ccxirrlc2fnq.us-east-1.rds.amazonaws.com/rdsairlines",table="scenario_2",properties=sqlproperties)
+
